@@ -5,7 +5,7 @@ import { sendGTMEvent } from "@next/third-parties/google";
 import { ArrowRight, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 import { submitLead, type LeadFormState } from "@/app/actions";
-import type { ServiceKey } from "@/lib/content";
+import { leadServiceOptions, type ServiceKey } from "@/lib/content";
 import { leadSuccessStorageKey } from "@/lib/lead-feedback";
 import styles from "./marketing.module.css";
 
@@ -15,7 +15,7 @@ const attributionFields = {
   utmMedium: "utm_medium", utmCampaign: "utm_campaign", utmTerm: "utm_term", utmContent: "utm_content",
 } as const;
 
-export function LeadForm({ service, title = "Request a consultation" }: { service: ServiceKey; title?: string }) {
+export function LeadForm({ service, title = "Request a consultation", selectableService = false }: { service: ServiceKey; title?: string; selectableService?: boolean }) {
   const [state, action, pending] = useActionState(submitLead, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const redirected = useRef(false);
@@ -35,20 +35,22 @@ export function LeadForm({ service, title = "Request a consultation" }: { servic
   }, []);
 
   useEffect(() => {
+    const eventService = state.submittedService ?? service;
     if (state.status === "success" && state.thankYouPath && !redirected.current) {
       redirected.current = true;
       try { sessionStorage.setItem(leadSuccessStorageKey, state.thankYouPath); } catch { /* The redirect remains authoritative. */ }
-      sendGTMEvent({ event: "generate_lead", service, landing_path: window.location.pathname });
+      sendGTMEvent({ event: "generate_lead", service: eventService, landing_path: window.location.pathname });
       window.location.assign(state.thankYouPath);
     } else if (state.status === "error") {
-      sendGTMEvent({ event: "lead_submit_error", service, landing_path: window.location.pathname });
-      toast.error("Enquiry not sent", { id: `lead-error-${service}`, description: state.message });
+      sendGTMEvent({ event: "lead_submit_error", service: eventService, landing_path: window.location.pathname });
+      toast.error("Enquiry not sent", { id: `lead-error-${eventService}`, description: state.message });
     }
   }, [service, state]);
 
   return <form ref={formRef} action={action} className={styles.leadForm}>
     <div className={styles.formHeading}><span className={styles.eyebrow}>Private enquiry</span><h2>{title}</h2><p>Share a few details and a consultant will respond.</p></div>
-    <input type="hidden" name="service" value={service} /><input type="hidden" name="startedAt" defaultValue="" />
+    {selectableService ? <label>Service required<select name="service" defaultValue="general">{leadServiceOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label> : <input type="hidden" name="service" value={service} />}
+    <input type="hidden" name="startedAt" defaultValue="" />
     <input type="hidden" name="landingPath" defaultValue="/" /><input type="hidden" name="referrer" defaultValue="" />
     {Object.keys(attributionFields).map((key) => <input type="hidden" name={key} defaultValue="" key={key} />)}
     <div className={styles.formRow}><label>Name<input name="name" autoComplete="name" required minLength={2} /></label><label>Work email<input name="email" type="email" autoComplete="email" required /></label></div>

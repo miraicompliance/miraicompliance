@@ -19,12 +19,12 @@ export function Header({ minimal = false, service = "general" }: { minimal?: boo
   return <header className={styles.header}><div className={styles.headerInner}>
     <Logo />
     {!minimal ? <nav className={styles.desktopNav} aria-label="Primary navigation">
-      <details className={styles.servicesMenu}><summary>Services</summary><div>{serviceCards.slice(0, 5).map((service) => <Link href={service.href} key={service.key}>{service.title}</Link>)}</div></details><Link href="/#process">How it works</Link><Link href="/#industries">Industries</Link><Link href="/#about">About</Link>
+      <details className={styles.servicesMenu}><summary>Services</summary><div>{serviceCards.slice(0, 5).map((service) => <Link href={service.href} key={service.key}>{service.title}</Link>)}</div></details><Link href="/#process">How it works</Link><Link href="/#industries">Industries</Link><Link href="/#about">About</Link><Link href="/#enquiry" className={styles.headerCta}>Enquire now</Link>
     </nav> : <span className={styles.independentTag}>Independent consultancy</span>}
     <TrackedLink href={contact.phoneHref} eventName="phone_click" service={service} className={styles.headerPhone}><Phone size={17} aria-hidden="true" /> {contact.phoneDisplay}</TrackedLink>
     {!minimal ? <details className={styles.mobileMenu}>
       <summary aria-label="Open navigation"><Menu aria-hidden="true" /><X aria-hidden="true" /></summary>
-      <nav aria-label="Mobile navigation"><Link href="/#services">All services</Link>{serviceCards.slice(0, 5).map((item) => <Link href={item.href} key={item.key}>{item.title}</Link>)}<Link href="/#process">How it works</Link><Link href="/#industries">Industries</Link><Link href="/#about">About</Link><TrackedLink href={contact.phoneHref} eventName="phone_click" service={service}>Call {contact.phoneDisplay}</TrackedLink></nav>
+      <nav aria-label="Mobile navigation"><Link href="/#enquiry">Fill the enquiry form</Link><Link href="/#services">All services</Link>{serviceCards.slice(0, 5).map((item) => <Link href={item.href} key={item.key}>{item.title}</Link>)}<Link href="/#process">How it works</Link><Link href="/#industries">Industries</Link><Link href="/#about">About</Link><TrackedLink href={contact.phoneHref} eventName="phone_click" service={service}>Call {contact.phoneDisplay}</TrackedLink></nav>
     </details> : null}
   </div></header>;
 }

@@ -9,6 +9,7 @@ export type LeadFormState = {
   status: "idle" | "error" | "success";
   message: string;
   thankYouPath?: string;
+  submittedService?: ServiceKey;
 };
 
 export type LeadSubmission = {
@@ -30,12 +31,14 @@ export type LeadSubmission = {
   consent: true;
 };
 
+const serviceKeys = ["epr", "lmpc", "bis", "wpc", "trademark", "general"] as const;
+
 const leadSchema = z.object({
   name: z.string().trim().min(2, "Enter your name").max(80),
   email: z.string().trim().email("Enter a valid email address").max(160),
   phone: z.string().trim().min(7, "Enter a valid phone number").max(24).regex(/^[+()\-\s0-9]+$/, "Enter a valid phone number"),
   message: z.string().trim().max(1200).optional(),
-  service: z.enum(["epr", "lmpc", "bis", "wpc", "trademark", "general"]),
+  service: z.enum(serviceKeys),
   landingPath: z.string().trim().startsWith("/").max(180),
   referrer: z.string().trim().max(500).optional(),
   gclid: z.string().trim().max(220).optional(),
@@ -54,8 +57,8 @@ const thankYouPaths: Record<ServiceKey, string> = {
   lmpc: "/thankyou-lmpc/",
   bis: "/thankyou-bis-certification/",
   wpc: "/thankyou-wpc-eta-approval/",
-  trademark: "/",
-  general: "/",
+  trademark: "/thankyou-consultation/",
+  general: "/thankyou-consultation/",
 };
 
 const runtime = globalThis as typeof globalThis & { miraiLeadDedupe?: Map<string, number> };
@@ -72,14 +75,15 @@ function escapeHtml(input: string) {
 }
 
 export async function submitLead(_: LeadFormState, formData: FormData): Promise<LeadFormState> {
-  const service = value(formData, "service") as ServiceKey;
+  const requestedService = value(formData, "service");
+  const service = serviceKeys.includes(requestedService as (typeof serviceKeys)[number]) ? requestedService as ServiceKey : "general";
   const fallbackPath = thankYouPaths[service] ?? "/";
 
-  if (value(formData, "website")) return { status: "success", message: "Thank you.", thankYouPath: fallbackPath };
+  if (value(formData, "website")) return { status: "success", message: "Thank you.", thankYouPath: fallbackPath, submittedService: service };
 
   const startedAt = Number(value(formData, "startedAt"));
   if (!Number.isFinite(startedAt) || Date.now() - startedAt < 1200) {
-    return { status: "error", message: "Please wait a moment and try again." };
+    return { status: "error", message: "Please wait a moment and try again.", submittedService: service };
   }
 
   const parsed = leadSchema.safeParse({
@@ -92,19 +96,19 @@ export async function submitLead(_: LeadFormState, formData: FormData): Promise<
     utmContent: value(formData, "utmContent") || undefined, consent: value(formData, "consent"),
   });
 
-  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the highlighted information." };
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the highlighted information.", submittedService: service };
 
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.LEAD_FROM_EMAIL ?? "Mirai Compliance <forms@miraicompliance.com>";
   const configuredRecipients = process.env.LEAD_TO_EMAIL ?? "contact@miraicompliance.com";
   const to = [...new Set(configuredRecipients.split(",").map((email) => email.trim()).filter(Boolean))];
   if (!to.length) to.push("contact@miraicompliance.com");
-  if (!apiKey) return { status: "error", message: "Online enquiries are temporarily unavailable. Please call or use WhatsApp." };
+  if (!apiKey) return { status: "error", message: "Online enquiries are temporarily unavailable. Please call or use WhatsApp.", submittedService: service };
 
   const lead: LeadSubmission = { ...parsed.data, consent: true };
   const dedupeKey = createHash("sha256").update(`${lead.service}|${lead.email.toLowerCase()}|${lead.phone}`).digest("hex");
   const lastSent = leadDedupe.get(dedupeKey);
-  if (lastSent && Date.now() - lastSent < 10 * 60 * 1000) return { status: "success", message: "Your enquiry has already been received.", thankYouPath: fallbackPath };
+  if (lastSent && Date.now() - lastSent < 10 * 60 * 1000) return { status: "success", message: "Your enquiry has already been received.", thankYouPath: fallbackPath, submittedService: lead.service };
 
   const leadId = randomUUID();
   const attribution = [lead.gclid && `GCLID: ${lead.gclid}`, lead.gbraid && `GBRAID: ${lead.gbraid}`, lead.wbraid && `WBRAID: ${lead.wbraid}`, lead.utmSource && `Source: ${lead.utmSource}`, lead.utmMedium && `Medium: ${lead.utmMedium}`, lead.utmCampaign && `Campaign: ${lead.utmCampaign}`, lead.utmTerm && `Term: ${lead.utmTerm}`, lead.utmContent && `Content: ${lead.utmContent}`].filter(Boolean) as string[];
@@ -115,10 +119,10 @@ export async function submitLead(_: LeadFormState, formData: FormData): Promise<
       from, to, replyTo: lead.email, subject: `New ${lead.service.toUpperCase()} enquiry · ${leadId.slice(0, 8)}`,
       html: `<h1>New consultation request</h1><p><strong>Service:</strong> ${escapeHtml(lead.service.toUpperCase())}</p><p><strong>Name:</strong> ${escapeHtml(lead.name)}<br><strong>Email:</strong> ${escapeHtml(lead.email)}<br><strong>Phone:</strong> ${escapeHtml(lead.phone)}</p><p><strong>Message:</strong><br>${escapeHtml(lead.message || "Not provided").replace(/\n/g, "<br>")}</p><p><strong>Landing page:</strong> ${escapeHtml(lead.landingPath)}<br><strong>Referrer:</strong> ${escapeHtml(lead.referrer || "Direct")}</p>${attribution.length ? `<p><strong>Attribution:</strong><br>${attribution.map(escapeHtml).join("<br>")}</p>` : ""}<p>Lead ID: ${leadId}</p>`,
     });
-    if (result.error) return { status: "error", message: "We could not send your enquiry. Please call or use WhatsApp." };
+    if (result.error) return { status: "error", message: "We could not send your enquiry. Please call or use WhatsApp.", submittedService: lead.service };
   } catch {
-    return { status: "error", message: "We could not send your enquiry. Please call or use WhatsApp." };
+    return { status: "error", message: "We could not send your enquiry. Please call or use WhatsApp.", submittedService: lead.service };
   }
   leadDedupe.set(dedupeKey, Date.now());
-  return { status: "success", message: "Your enquiry has been received.", thankYouPath: fallbackPath };
+  return { status: "success", message: "Your enquiry has been received.", thankYouPath: fallbackPath, submittedService: lead.service };
 }
